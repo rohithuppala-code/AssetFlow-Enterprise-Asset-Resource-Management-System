@@ -1,71 +1,117 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { BadgeCheck, LockKeyhole, Mail, UserRound } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import AuthShell from '../components/AuthShell';
 import { useAuth } from '../context/AuthContext';
+import { extractErrorMessage } from '../utils/errorHandler';
 
-const RegisterPage = () => {
+function RegisterPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState('Employee');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { signup } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
     setError('');
     setLoading(true);
     try {
-      await signup(name, email, password);
+      await signup(name, email, password, role);
       navigate('/');
     } catch (err) {
-      setError(err.response?.data?.message || 'Registration failed');
+      setError(extractErrorMessage(err));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
-      <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 30% 20%, rgba(99,102,241,0.15), transparent 50%), radial-gradient(ellipse at 70% 80%, rgba(139,92,246,0.1), transparent 50%)', pointerEvents: 'none' }} />
-      <div className="card animate-fadeIn" style={{ width: '100%', maxWidth: '420px', padding: '2.5rem', position: 'relative' }}>
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <div style={{ width: '56px', height: '56px', borderRadius: '0.75rem', background: 'linear-gradient(135deg, var(--color-primary), var(--color-accent))', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', fontWeight: 700, color: 'white', marginBottom: '1rem' }}>AF</div>
-          <h1 className="gradient-text" style={{ fontSize: '1.75rem', fontWeight: 700, marginBottom: '0.5rem' }}>Create Account</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Join AssetFlow as an Employee</p>
+    <AuthShell
+      title="Create your workspace access"
+      subtitle="Set up your account to view assets, bookings, approvals, and maintenance requests."
+      footerText="Already have access?"
+      footerLabel="Go to sign in"
+      footerLink="/login"
+    >
+      {error ? <div className="alert">{error}</div> : null}
+
+      <form onSubmit={handleSubmit} style={{ display: 'grid', gap: '1rem' }}>
+        <div className="field">
+          <label htmlFor="register-name">Full name</label>
+          <div style={{ position: 'relative' }}>
+            <UserRound size={16} style={{ position: 'absolute', left: 14, top: 15, color: 'var(--text-muted)' }} />
+            <input
+              id="register-name"
+              className="input"
+              type="text"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Priya Sharma"
+              required
+              autoFocus
+              style={{ paddingLeft: '2.45rem' }}
+            />
+          </div>
         </div>
 
-        {error && (
-          <div style={{ padding: '0.75rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '0.5rem', color: '#f87171', fontSize: '0.8125rem', marginBottom: '1.5rem' }}>
-            {error}
+        <div className="field">
+          <label htmlFor="register-email">Work email</label>
+          <div style={{ position: 'relative' }}>
+            <Mail size={16} style={{ position: 'absolute', left: 14, top: 15, color: 'var(--text-muted)' }} />
+            <input
+              id="register-email"
+              className="input"
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="priya@company.com"
+              required
+              style={{ paddingLeft: '2.45rem' }}
+            />
           </div>
-        )}
+        </div>
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          <div>
-            <label className="label" htmlFor="reg-name">Full Name</label>
-            <input id="reg-name" className="input" type="text" placeholder="John Doe" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
+        <div className="field">
+          <label htmlFor="register-role">Starting role</label>
+          <div style={{ position: 'relative' }}>
+            <BadgeCheck size={16} style={{ position: 'absolute', left: 14, top: 15, color: 'var(--text-muted)' }} />
+            <select id="register-role" className="select" value={role} onChange={(event) => setRole(event.target.value)} style={{ paddingLeft: '2.45rem' }}>
+              <option value="Employee">Employee</option>
+              <option value="Admin">Admin</option>
+              <option value="AssetManager">Asset Manager</option>
+            </select>
           </div>
-          <div>
-            <label className="label" htmlFor="reg-email">Email</label>
-            <input id="reg-email" className="input" type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          </div>
-          <div>
-            <label className="label" htmlFor="reg-password">Password</label>
-            <input id="reg-password" className="input" type="password" placeholder="Min 8 characters" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} />
-          </div>
-          <button type="submit" className="btn btn-primary" disabled={loading} style={{ width: '100%', padding: '0.75rem', fontSize: '0.9375rem' }}>
-            {loading ? 'Creating account...' : 'Create Account'}
-          </button>
-        </form>
+          <span className="field-hint">The API currently supports multiple roles at signup, so the UI preserves that behavior.</span>
+        </div>
 
-        <p style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-          Already have an account?{' '}
-          <Link to="/login" style={{ color: 'var(--color-primary)', textDecoration: 'none', fontWeight: 500 }}>Sign in</Link>
-        </p>
-      </div>
-    </div>
+        <div className="field">
+          <label htmlFor="register-password">Password</label>
+          <div style={{ position: 'relative' }}>
+            <LockKeyhole size={16} style={{ position: 'absolute', left: 14, top: 15, color: 'var(--text-muted)' }} />
+            <input
+              id="register-password"
+              className="input"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Minimum 8 characters"
+              required
+              minLength={8}
+              style={{ paddingLeft: '2.45rem' }}
+            />
+          </div>
+        </div>
+
+        <button type="submit" className="button button-primary" disabled={loading}>
+          {loading ? 'Creating account...' : 'Create AssetFlow account'}
+        </button>
+      </form>
+    </AuthShell>
   );
-};
+}
 
 export default RegisterPage;

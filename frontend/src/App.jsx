@@ -41,7 +41,7 @@ const AppRoutes = () => {
       <Route path="/maintenance" element={<ProtectedRoute><Layout><MaintenancePage /></Layout></ProtectedRoute>} />
       <Route path="/audits" element={<ProtectedRoute roles={['Admin', 'AssetManager']}><Layout><AuditsPage /></Layout></ProtectedRoute>} />
       <Route path="/org-setup" element={<ProtectedRoute roles={['Admin']}><Layout><OrgSetupPage /></Layout></ProtectedRoute>} />
-      <Route path="/reports" element={<ProtectedRoute roles={['Admin', 'AssetManager', 'DepartmentHead']}><Layout><ReportsPage /></Layout></ProtectedRoute>} />
+      <Route path="/reports" element={<ProtectedRoute roles={['Admin', 'AssetManager']}><Layout><ReportsPage /></Layout></ProtectedRoute>} />
       <Route path="/notifications" element={<ProtectedRoute><Layout><NotificationsPage /></Layout></ProtectedRoute>} />
       <Route path="/activity-logs" element={<ProtectedRoute roles={['Admin']}><Layout><ActivityLogsPage /></Layout></ProtectedRoute>} />
 

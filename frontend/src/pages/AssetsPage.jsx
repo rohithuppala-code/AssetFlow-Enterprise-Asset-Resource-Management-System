@@ -1,10 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Boxes, CircleDollarSign, ClipboardList, History, Plus, Warehouse } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { getAssets, createAsset, getCategories, getAssetHistory } from '../api/dataApi';
+import { createAsset, getAssetHistory, getAssets, getCategories } from '../api/dataApi';
+import {
+  EmptyState,
+  FiltersBar,
+  KeyValueList,
+  LoadingState,
+  MetricCard,
+  PageHeader,
+  SearchField,
+  StatusPill,
+  SurfaceCard,
+  formatNumber,
+} from '../components/ui';
 
-const statusBadge = { Available: 'badge-success', Allocated: 'badge-info', Reserved: 'badge-warning', UnderMaintenance: 'badge-warning', Lost: 'badge-danger', Retired: 'badge-neutral', Disposed: 'badge-neutral' };
-
-const AssetsPage = () => {
+function AssetsPage() {
   const { hasRole } = useAuth();
   const [assets, setAssets] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -13,7 +24,7 @@ const AssetsPage = () => {
   const [showForm, setShowForm] = useState(false);
   const [showDetail, setShowDetail] = useState(null);
   const [history, setHistory] = useState(null);
-  const [form, setForm] = useState({});
+  const [form, setForm] = useState({ isBookable: false, condition: 'Good' });
   const [filters, setFilters] = useState({ search: '', status: '', page: 1 });
   const [error, setError] = useState('');
 
@@ -23,25 +34,33 @@ const AssetsPage = () => {
       const res = await getAssets(filters);
       setAssets(res.data.data.assets);
       setPagination(res.data.data.pagination);
-    } catch { /* ignore */ }
-    setLoading(false);
+    } catch {
+      setAssets([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => { load(); }, [filters]);
   useEffect(() => {
-    getCategories({ limit: 100 }).then((res) => setCategories(res.data.data.categories)).catch(() => {});
+    load();
+  }, [filters]);
+
+  useEffect(() => {
+    getCategories({ limit: 100 })
+      .then((res) => setCategories(res.data.data.categories))
+      .catch(() => setCategories([]));
   }, []);
 
-  const handleCreate = async (e) => {
-    e.preventDefault();
+  const handleCreate = async (event) => {
+    event.preventDefault();
     setError('');
     try {
       await createAsset(form);
       setShowForm(false);
-      setForm({});
+      setForm({ isBookable: false, condition: 'Good' });
       load();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed');
+      setError(err.response?.data?.message || 'Failed to register asset');
     }
   };
 
@@ -50,125 +69,221 @@ const AssetsPage = () => {
     try {
       const res = await getAssetHistory(asset._id);
       setHistory(res.data.data);
-    } catch { setHistory(null); }
+    } catch {
+      setHistory(null);
+    }
   };
 
+  const stats = useMemo(() => {
+    const bookableCount = assets.filter((asset) => asset.isBookable).length;
+    const allocatedCount = assets.filter((asset) => asset.status === 'Allocated').length;
+    const costTracked = assets.reduce((sum, asset) => sum + Number(asset.acquisitionCost || 0), 0);
+    return { bookableCount, allocatedCount, costTracked };
+  }, [assets]);
+
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, marginBottom: '0.25rem' }}>Asset Directory</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem' }}>Register and track assets</p>
-        </div>
-        {hasRole('Admin', 'AssetManager') && (
-          <button className="btn btn-primary" onClick={() => { setShowForm(!showForm); setShowDetail(null); }}>+ Register Asset</button>
-        )}
-      </div>
+    <div className="page-stack">
+      <PageHeader
+        eyebrow="Asset registry"
+        title="Lifecycle-aware asset directory"
+        description="Register inventory, track current holders, and inspect maintenance or allocation history from a unified operational catalog."
+        actions={
+          hasRole('Admin', 'AssetManager') ? [
+            <button key="create" className="button button-primary" onClick={() => { setShowForm((value) => !value); setShowDetail(null); }}>
+              <Plus size={18} />
+              <span>{showForm ? 'Close form' : 'Register asset'}</span>
+            </button>,
+          ] : null
+        }
+      />
 
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
-        <input className="input" style={{ maxWidth: '300px' }} placeholder="Search by name, tag, serial..." value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value, page: 1 })} />
-        <select className="input" style={{ maxWidth: '180px' }} value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value, page: 1 })}>
-          <option value="">All Statuses</option>
-          <option value="Available">Available</option>
-          <option value="Allocated">Allocated</option>
-          <option value="Reserved">Reserved</option>
-          <option value="UnderMaintenance">Under Maintenance</option>
-          <option value="Lost">Lost</option>
-          <option value="Retired">Retired</option>
-        </select>
-      </div>
+      <section className="kpi-grid">
+        <MetricCard title="Visible assets" value={formatNumber(pagination.total || assets.length)} icon={Boxes} tone="var(--brand-primary)" index={0} footer="Records currently available in this view" />
+        <MetricCard title="Allocated in view" value={formatNumber(stats.allocatedCount)} icon={ClipboardList} tone="var(--info)" index={1} footer="Assets actively assigned to users or departments" />
+        <MetricCard title="Bookable resources" value={formatNumber(stats.bookableCount)} icon={Warehouse} tone="var(--success)" index={2} footer="Shared assets available for scheduling" />
+        <MetricCard title="Tracked acquisition cost" value={`₹${formatNumber(stats.costTracked)}`} icon={CircleDollarSign} tone="var(--warning)" index={3} footer="Useful for reporting and prioritization" />
+      </section>
 
-      {error && <div style={{ padding: '0.75rem', background: 'rgba(239,68,68,0.1)', borderRadius: '0.5rem', color: '#f87171', fontSize: '0.8125rem', marginBottom: '1rem' }}>{error}</div>}
+      <SurfaceCard title="Asset workspace" description="Search, filter, inspect, and register assets without leaving the registry view." index={0}>
+        <div className="page-stack">
+          <FiltersBar>
+            <SearchField
+              value={filters.search}
+              onChange={(event) => setFilters({ ...filters, search: event.target.value, page: 1 })}
+              placeholder="Search by name, tag, or serial number"
+              style={{ flex: 1, minWidth: 260 }}
+            />
+            <select className="select" value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value, page: 1 })} style={{ maxWidth: 220 }}>
+              <option value="">All statuses</option>
+              <option value="Available">Available</option>
+              <option value="Allocated">Allocated</option>
+              <option value="Reserved">Reserved</option>
+              <option value="UnderMaintenance">Under maintenance</option>
+              <option value="Lost">Lost</option>
+              <option value="Retired">Retired</option>
+              <option value="Disposed">Disposed</option>
+            </select>
+          </FiltersBar>
 
-      {/* Create Form */}
-      {showForm && (
-        <form onSubmit={handleCreate} className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h3 style={{ marginBottom: '1rem', fontWeight: 600 }}>Register New Asset</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1rem' }}>
-            <div><label className="label">Name *</label><input className="input" placeholder="Asset Name" value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></div>
-            <div><label className="label">Category *</label>
-              <select className="input" value={form.category || ''} onChange={(e) => setForm({ ...form, category: e.target.value })} required>
-                <option value="">Select...</option>
-                {categories.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
-              </select>
+          {error ? <div className="alert">{error}</div> : null}
+
+          {showForm ? (
+            <div style={{ padding: '1.2rem', borderRadius: 22, background: 'rgba(8, 18, 34, 0.54)', border: '1px solid rgba(148, 163, 184, 0.08)' }}>
+              <form onSubmit={handleCreate} style={{ display: 'grid', gap: '1rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+                  <div className="field">
+                    <label>Name</label>
+                    <input className="input" value={form.name || ''} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
+                  </div>
+                  <div className="field">
+                    <label>Category</label>
+                    <select className="select" value={form.category || ''} onChange={(event) => setForm({ ...form, category: event.target.value })} required>
+                      <option value="">Select category</option>
+                      {categories.map((category) => (
+                        <option key={category._id} value={category._id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label>Serial number</label>
+                    <input className="input" value={form.serialNumber || ''} onChange={(event) => setForm({ ...form, serialNumber: event.target.value })} />
+                  </div>
+                  <div className="field">
+                    <label>Location</label>
+                    <input className="input" value={form.location || ''} onChange={(event) => setForm({ ...form, location: event.target.value })} placeholder="Building / room" />
+                  </div>
+                  <div className="field">
+                    <label>Condition</label>
+                    <select className="select" value={form.condition || 'Good'} onChange={(event) => setForm({ ...form, condition: event.target.value })}>
+                      <option value="New">New</option>
+                      <option value="Good">Good</option>
+                      <option value="Fair">Fair</option>
+                      <option value="Poor">Poor</option>
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label>Bookable resource</label>
+                    <select className="select" value={form.isBookable ? 'true' : 'false'} onChange={(event) => setForm({ ...form, isBookable: event.target.value === 'true' })}>
+                      <option value="false">No</option>
+                      <option value="true">Yes</option>
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label>Acquisition cost</label>
+                    <input className="input" type="number" min="0" value={form.acquisitionCost || ''} onChange={(event) => setForm({ ...form, acquisitionCost: Number(event.target.value) })} />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <button type="submit" className="button button-primary">Save asset</button>
+                  <button type="button" className="button button-secondary" onClick={() => setShowForm(false)}>Cancel</button>
+                </div>
+              </form>
             </div>
-            <div><label className="label">Serial Number</label><input className="input" placeholder="Optional" value={form.serialNumber || ''} onChange={(e) => setForm({ ...form, serialNumber: e.target.value })} /></div>
-            <div><label className="label">Location</label><input className="input" placeholder="Building/Room" value={form.location || ''} onChange={(e) => setForm({ ...form, location: e.target.value })} /></div>
-            <div><label className="label">Condition</label>
-              <select className="input" value={form.condition || 'Good'} onChange={(e) => setForm({ ...form, condition: e.target.value })}>
-                <option value="New">New</option><option value="Good">Good</option><option value="Fair">Fair</option><option value="Poor">Poor</option>
-              </select>
-            </div>
-            <div><label className="label">Bookable?</label>
-              <select className="input" value={form.isBookable ? 'true' : 'false'} onChange={(e) => setForm({ ...form, isBookable: e.target.value === 'true' })}>
-                <option value="false">No</option><option value="true">Yes (Shared Resource)</option>
-              </select>
-            </div>
-            <div><label className="label">Acquisition Cost</label><input className="input" type="number" min="0" placeholder="0" value={form.acquisitionCost || ''} onChange={(e) => setForm({ ...form, acquisitionCost: Number(e.target.value) })} /></div>
-          </div>
-          <div style={{ marginTop: '1rem', display: 'flex', gap: '0.75rem' }}>
-            <button type="submit" className="btn btn-primary">Register</button>
-            <button type="button" className="btn btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
-          </div>
-        </form>
-      )}
+          ) : null}
 
-      {/* Detail Panel */}
-      {showDetail && (
-        <div className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h3 style={{ fontWeight: 600 }}>{showDetail.name} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({showDetail.assetTag})</span></h3>
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowDetail(null)}>✕ Close</button>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.25rem', fontSize: '0.875rem' }}>
-            <div><span style={{ color: 'var(--text-secondary)' }}>Status:</span> <span className={`badge ${statusBadge[showDetail.status] || 'badge-neutral'}`}>{showDetail.status}</span></div>
-            <div><span style={{ color: 'var(--text-secondary)' }}>Category:</span> {showDetail.category?.name}</div>
-            <div><span style={{ color: 'var(--text-secondary)' }}>Location:</span> {showDetail.location || '—'}</div>
-            <div><span style={{ color: 'var(--text-secondary)' }}>Condition:</span> {showDetail.condition}</div>
-            <div><span style={{ color: 'var(--text-secondary)' }}>Holder:</span> {showDetail.currentHolder?.name || 'None'}</div>
-            <div><span style={{ color: 'var(--text-secondary)' }}>Bookable:</span> {showDetail.isBookable ? 'Yes' : 'No'}</div>
-          </div>
-          {history && (
-            <div>
-              <h4 style={{ fontWeight: 600, marginBottom: '0.75rem' }}>History</h4>
-              <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-                <div>{history.allocations?.length || 0} allocation(s), {history.maintenanceRequests?.length || 0} maintenance request(s)</div>
+          {showDetail ? (
+            <div style={{ padding: '1.2rem', borderRadius: 22, background: 'rgba(8, 18, 34, 0.54)', border: '1px solid rgba(148, 163, 184, 0.08)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '1rem' }}>
+                <div>
+                  <h3 style={{ margin: 0 }}>{showDetail.name}</h3>
+                  <div style={{ color: 'var(--text-secondary)', marginTop: '0.35rem' }}>{showDetail.assetTag}</div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <StatusPill>{showDetail.status}</StatusPill>
+                  <button className="button button-secondary button-sm" onClick={() => setShowDetail(null)}>Close detail</button>
+                </div>
               </div>
+
+              <KeyValueList
+                items={[
+                  { label: 'Category', value: showDetail.category?.name || '--' },
+                  { label: 'Current holder', value: showDetail.currentHolder?.name || 'Unassigned' },
+                  { label: 'Location', value: showDetail.location || '--' },
+                  { label: 'Condition', value: showDetail.condition || '--' },
+                  { label: 'Bookable', value: showDetail.isBookable ? 'Yes' : 'No' },
+                  { label: 'Maintenance records', value: history?.maintenanceRequests?.length ?? '--' },
+                ]}
+              />
+
+              <div style={{ marginTop: '1rem', display: 'grid', gap: '0.7rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
+                  <History size={16} color="var(--text-secondary)" />
+                  <strong>History snapshot</strong>
+                </div>
+                <div style={{ color: 'var(--text-secondary)' }}>
+                  {history ? `${history.allocations?.length || 0} allocation records and ${history.maintenanceRequests?.length || 0} maintenance requests captured.` : 'History could not be loaded for this asset.'}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {loading ? (
+            <LoadingState label="Loading asset registry..." />
+          ) : assets.length === 0 ? (
+            <EmptyState icon={Boxes} title="No assets match this view" description="Adjust filters or register your first asset to begin tracking lifecycle and allocation activity." />
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Asset</th>
+                    <th>Status</th>
+                    <th>Category</th>
+                    <th>Location</th>
+                    <th>Holder</th>
+                    <th>Flags</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {assets.map((asset) => (
+                    <tr key={asset._id} className="table-row-clickable" onClick={() => viewHistory(asset)}>
+                      <td>
+                        <div style={{ fontWeight: 800 }}>{asset.name}</div>
+                        <div style={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>{asset.assetTag} {asset.serialNumber ? `• ${asset.serialNumber}` : ''}</div>
+                      </td>
+                      <td><StatusPill>{asset.status}</StatusPill></td>
+                      <td>{asset.category?.name || '--'}</td>
+                      <td>{asset.location || '--'}</td>
+                      <td>{asset.currentHolder?.name || 'Available pool'}</td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                          {asset.isBookable ? <StatusPill tone="pill pill-info">Bookable</StatusPill> : null}
+                          <StatusPill>{asset.condition || 'Unknown'}</StatusPill>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
-        </div>
-      )}
 
-      {/* Asset List */}
-      <div style={{ display: 'grid', gap: '0.75rem' }}>
-        {assets.map((asset) => (
-          <div key={asset._id} className="card" style={{ padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => viewHistory(asset)}>
-            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '0.5rem', background: 'linear-gradient(135deg, rgba(99,102,241,0.2), rgba(139,92,246,0.2))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', flexShrink: 0 }}>📦</div>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: '0.9375rem' }}>{asset.name}</div>
-                <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>{asset.assetTag} · {asset.category?.name} · {asset.location || 'No location'}</div>
+          {pagination.pages > 1 ? (
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                Page {pagination.page} of {pagination.pages}
+              </div>
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <button className="button button-secondary button-sm" disabled={filters.page <= 1} onClick={() => setFilters({ ...filters, page: filters.page - 1 })}>Previous</button>
+                <button className="button button-secondary button-sm" disabled={filters.page >= pagination.pages} onClick={() => setFilters({ ...filters, page: filters.page + 1 })}>Next</button>
               </div>
             </div>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              {asset.currentHolder && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{asset.currentHolder.name}</span>}
-              <span className={`badge ${statusBadge[asset.status] || 'badge-neutral'}`}>{asset.status}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Pagination */}
-      {pagination.pages > 1 && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginTop: '1.5rem' }}>
-          <button className="btn btn-secondary btn-sm" disabled={filters.page <= 1} onClick={() => setFilters({ ...filters, page: filters.page - 1 })}>← Prev</button>
-          <span style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>Page {pagination.page} of {pagination.pages}</span>
-          <button className="btn btn-secondary btn-sm" disabled={filters.page >= pagination.pages} onClick={() => setFilters({ ...filters, page: filters.page + 1 })}>Next →</button>
+          ) : null}
         </div>
-      )}
+      </SurfaceCard>
+
+      <style>{`
+        @media (max-width: 1200px) {
+          .kpi-grid > * { grid-column: span 3 !important; }
+        }
+        @media (max-width: 780px) {
+          .kpi-grid > * { grid-column: span 2 !important; }
+        }
+      `}</style>
     </div>
   );
-};
+}
 
 export default AssetsPage;

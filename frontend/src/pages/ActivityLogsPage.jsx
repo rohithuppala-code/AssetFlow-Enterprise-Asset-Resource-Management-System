@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { History } from 'lucide-react';
 import { getActivityLogs } from '../api/dataApi';
+import { EmptyState, LoadingState, PageHeader, SearchField, StatusPill, SurfaceCard, formatDateTime } from '../components/ui';
 
-const ActivityLogsPage = () => {
+function ActivityLogsPage() {
   const [logs, setLogs] = useState([]);
   const [pagination, setPagination] = useState({});
   const [loading, setLoading] = useState(true);
@@ -11,65 +13,77 @@ const ActivityLogsPage = () => {
   const load = async () => {
     setLoading(true);
     try {
-      const params = { limit: 30, page, action: actionFilter || undefined };
-      const res = await getActivityLogs(params);
+      const res = await getActivityLogs({ limit: 30, page, action: actionFilter || undefined });
       setLogs(res.data.data.logs);
       setPagination(res.data.data.pagination);
-    } catch { /* ignore */ }
-    setLoading(false);
+    } catch {
+      setLogs([]);
+      setPagination({});
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { load(); }, [page, actionFilter]);
 
-  const actionIcon = {
-    ASSET_CREATED: '📦', ASSET_UPDATED: '✏️', ASSET_STATUS_CHANGED: '🔄',
-    ALLOCATION_MADE: '📤', ASSET_RETURNED: '📥',
-    TRANSFER_REQUESTED: '🔄', TRANSFER_APPROVED: '✅', TRANSFER_REJECTED: '❌', TRANSFER_COMPLETED: '✅',
-    BOOKING_CREATED: '📅', BOOKING_CANCELLED: '🚫', BOOKING_RESCHEDULED: '📅',
-    MAINTENANCE_REQUESTED: '🔧', MAINTENANCE_APPROVED: '✅', MAINTENANCE_REJECTED: '❌',
-    MAINTENANCE_TECHNICIAN_ASSIGNED: '👷', MAINTENANCE_STARTED: '▶️', MAINTENANCE_RESOLVED: '✅',
-    AUDIT_CREATED: '📋', AUDIT_ENTRY_SUBMITTED: '📝', AUDIT_CLOSED: '🔒',
-    DEPARTMENT_CREATED: '🏢', DEPARTMENT_UPDATED: '✏️', DEPARTMENT_DEACTIVATED: '⏸️',
-    CATEGORY_CREATED: '📁', CATEGORY_UPDATED: '✏️',
-    USER_UPDATED: '👤', ROLE_CHANGED: '👤',
-  };
-
   return (
-    <div>
-      <h1 style={{ fontSize: '1.75rem', fontWeight: 700, marginBottom: '0.25rem' }}>Activity Logs</h1>
-      <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem', marginBottom: '1.5rem' }}>Full audit trail of system actions</p>
+    <div className="page-stack">
+      <PageHeader
+        eyebrow="Audit trail"
+        title="System activity logs"
+        description="Review who changed what, when, and against which entity across asset, maintenance, booking, and admin workflows."
+      />
 
-      <div style={{ marginBottom: '1.25rem' }}>
-        <input className="input" style={{ maxWidth: '250px' }} placeholder="Filter by action..." value={actionFilter} onChange={(e) => { setActionFilter(e.target.value); setPage(1); }} />
-      </div>
+      <SurfaceCard title="Immutable activity feed" description="Filter by action key and move through paginated history." index={0}>
+        <div className="page-stack">
+          <SearchField value={actionFilter} onChange={(event) => { setActionFilter(event.target.value); setPage(1); }} placeholder="Filter by action key" style={{ maxWidth: 320 }} />
 
-      <div style={{ display: 'grid', gap: '0.5rem' }}>
-        {logs.map((log) => (
-          <div key={log._id} className="card" style={{ padding: '1rem', display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
-            <span style={{ fontSize: '1.25rem', flexShrink: 0 }}>{actionIcon[log.action] || '📝'}</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.25rem' }}>
-                <span style={{ fontWeight: 600, fontSize: '0.9375rem' }}>{log.description}</span>
-                <span className="badge badge-neutral" style={{ flexShrink: 0 }}>{log.action}</span>
+          {loading ? (
+            <LoadingState label="Loading activity trail..." />
+          ) : logs.length === 0 ? (
+            <EmptyState icon={History} title="No log records found" description="Once operational changes are recorded by the backend, they will appear here with actor, entity, and time metadata." />
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Description</th>
+                    <th>Action</th>
+                    <th>Actor</th>
+                    <th>Entity</th>
+                    <th>Timestamp</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {logs.map((log) => (
+                    <tr key={log._id}>
+                      <td style={{ fontWeight: 700 }}>{log.description}</td>
+                      <td><StatusPill>{log.action}</StatusPill></td>
+                      <td>{log.user?.name || '--'} {log.user?.role ? `(${log.user.role})` : ''}</td>
+                      <td>{log.entityType}</td>
+                      <td>{formatDateTime(log.createdAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {pagination.pages > 1 ? (
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                Page {pagination.page} of {pagination.pages}
               </div>
-              <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-                By: {log.user?.name} ({log.user?.role}) · {log.entityType} · {new Date(log.createdAt).toLocaleString()}
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <button className="button button-secondary button-sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</button>
+                <button className="button button-secondary button-sm" disabled={page >= pagination.pages} onClick={() => setPage(page + 1)}>Next</button>
               </div>
             </div>
-          </div>
-        ))}
-        {logs.length === 0 && <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No activity logs</div>}
-      </div>
-
-      {pagination.pages > 1 && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginTop: '1.5rem' }}>
-          <button className="btn btn-secondary btn-sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>← Prev</button>
-          <span style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>Page {pagination.page} of {pagination.pages}</span>
-          <button className="btn btn-secondary btn-sm" disabled={page >= pagination.pages} onClick={() => setPage(page + 1)}>Next →</button>
+          ) : null}
         </div>
-      )}
+      </SurfaceCard>
     </div>
   );
-};
+}
 
 export default ActivityLogsPage;

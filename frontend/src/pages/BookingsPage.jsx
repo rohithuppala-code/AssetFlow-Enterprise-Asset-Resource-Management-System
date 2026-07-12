@@ -1,7 +1,17 @@
-import { useState, useEffect } from 'react';
-import { getBookings, createBooking, cancelBooking, getAssets } from '../api/dataApi';
+import { useEffect, useMemo, useState } from 'react';
+import { BookMarked, CalendarClock, CalendarX2, Plus } from 'lucide-react';
+import { cancelBooking, createBooking, getAssets, getBookings } from '../api/dataApi';
+import {
+  EmptyState,
+  LoadingState,
+  MetricCard,
+  PageHeader,
+  StatusPill,
+  SurfaceCard,
+  formatDateTime,
+} from '../components/ui';
 
-const BookingsPage = () => {
+function BookingsPage() {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -14,17 +24,22 @@ const BookingsPage = () => {
     try {
       const res = await getBookings({ limit: 50 });
       setBookings(res.data.data.bookings);
-    } catch { /* ignore */ }
-    setLoading(false);
+    } catch {
+      setBookings([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { load(); }, []);
   useEffect(() => {
-    getAssets({ isBookable: 'true', limit: 100 }).then((res) => setBookableAssets(res.data.data.assets)).catch(() => {});
+    getAssets({ isBookable: 'true', limit: 100 })
+      .then((res) => setBookableAssets(res.data.data.assets))
+      .catch(() => setBookableAssets([]));
   }, []);
 
-  const handleCreate = async (e) => {
-    e.preventDefault();
+  const handleCreate = async (event) => {
+    event.preventDefault();
     setError('');
     try {
       await createBooking(form);
@@ -32,70 +47,139 @@ const BookingsPage = () => {
       setForm({});
       load();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed');
+      setError(err.response?.data?.message || 'Failed to create booking');
     }
   };
 
   const handleCancel = async (id) => {
     if (!confirm('Cancel this booking?')) return;
-    try { await cancelBooking(id, {}); load(); } catch (err) { alert(err.response?.data?.message || 'Failed'); }
+    try {
+      await cancelBooking(id, {});
+      load();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to cancel booking');
+    }
   };
 
-  const statusBadge = { Upcoming: 'badge-info', Ongoing: 'badge-success', Completed: 'badge-neutral', Cancelled: 'badge-danger' };
+  const stats = useMemo(() => ({
+    upcoming: bookings.filter((booking) => booking.status === 'Upcoming').length,
+    ongoing: bookings.filter((booking) => booking.status === 'Ongoing').length,
+    cancelled: bookings.filter((booking) => booking.status === 'Cancelled').length,
+  }), [bookings]);
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, marginBottom: '0.25rem' }}>Resource Booking</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem' }}>Book shared resources by time slot</p>
-        </div>
-        <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>+ Book Resource</button>
-      </div>
+    <div className="page-stack">
+      <PageHeader
+        eyebrow="Shared resource scheduling"
+        title="Time-slot booking control"
+        description="Reserve shared rooms, vehicles, and equipment while keeping overlap-sensitive scheduling visible to every team."
+        actions={[
+          <button key="booking" className="button button-primary" onClick={() => setShowForm((value) => !value)}>
+            <Plus size={18} />
+            <span>{showForm ? 'Close booking form' : 'Book resource'}</span>
+          </button>,
+        ]}
+      />
 
-      {error && <div style={{ padding: '0.75rem', background: 'rgba(239,68,68,0.1)', borderRadius: '0.5rem', color: '#f87171', fontSize: '0.8125rem', marginBottom: '1rem' }}>{error}</div>}
+      <section className="kpi-grid">
+        <MetricCard title="Upcoming bookings" value={stats.upcoming} icon={CalendarClock} tone="var(--brand-primary)" index={0} footer="Reservations waiting to start" />
+        <MetricCard title="In progress now" value={stats.ongoing} icon={BookMarked} tone="var(--success)" index={1} footer="Resources currently in use" />
+        <MetricCard title="Cancelled" value={stats.cancelled} icon={CalendarX2} tone="var(--danger)" index={2} footer="Recently released slots" />
+      </section>
 
-      {showForm && (
-        <form onSubmit={handleCreate} className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h3 style={{ marginBottom: '1rem', fontWeight: 600 }}>New Booking</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1rem' }}>
-            <div><label className="label">Resource *</label>
-              <select className="input" value={form.asset || ''} onChange={(e) => setForm({ ...form, asset: e.target.value })} required>
-                <option value="">Select resource...</option>
-                {bookableAssets.map((a) => <option key={a._id} value={a._id}>{a.name} ({a.assetTag})</option>)}
-              </select>
-            </div>
-            <div><label className="label">Start Time *</label><input className="input" type="datetime-local" value={form.startTime || ''} onChange={(e) => setForm({ ...form, startTime: e.target.value })} required /></div>
-            <div><label className="label">End Time *</label><input className="input" type="datetime-local" value={form.endTime || ''} onChange={(e) => setForm({ ...form, endTime: e.target.value })} required /></div>
-            <div><label className="label">Purpose</label><input className="input" placeholder="Meeting, etc." value={form.purpose || ''} onChange={(e) => setForm({ ...form, purpose: e.target.value })} /></div>
-          </div>
-          <div style={{ marginTop: '1rem', display: 'flex', gap: '0.75rem' }}>
-            <button type="submit" className="btn btn-primary">Book</button>
-            <button type="button" className="btn btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
-          </div>
-        </form>
-      )}
+      <SurfaceCard title="Booking board" description="Create bookings and track their live status across shared resources." index={0}>
+        <div className="page-stack">
+          {error ? <div className="alert">{error}</div> : null}
 
-      <div style={{ display: 'grid', gap: '0.75rem' }}>
-        {bookings.map((b) => (
-          <div key={b._id} className="card" style={{ padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontWeight: 600 }}>{b.asset?.name} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({b.asset?.assetTag})</span></div>
-              <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-                {new Date(b.startTime).toLocaleString()} → {new Date(b.endTime).toLocaleString()}
+          {showForm ? (
+            <form onSubmit={handleCreate} style={{ display: 'grid', gap: '1rem', padding: '1.2rem', borderRadius: 22, background: 'rgba(8, 18, 34, 0.54)', border: '1px solid rgba(148, 163, 184, 0.08)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+                <div className="field">
+                  <label>Shared resource</label>
+                  <select className="select" value={form.asset || ''} onChange={(event) => setForm({ ...form, asset: event.target.value })} required>
+                    <option value="">Select resource</option>
+                    {bookableAssets.map((asset) => (
+                      <option key={asset._id} value={asset._id}>{asset.name} ({asset.assetTag})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Start time</label>
+                  <input className="input" type="datetime-local" value={form.startTime || ''} onChange={(event) => setForm({ ...form, startTime: event.target.value })} required />
+                </div>
+                <div className="field">
+                  <label>End time</label>
+                  <input className="input" type="datetime-local" value={form.endTime || ''} onChange={(event) => setForm({ ...form, endTime: event.target.value })} required />
+                </div>
+                <div className="field">
+                  <label>Purpose</label>
+                  <input className="input" value={form.purpose || ''} onChange={(event) => setForm({ ...form, purpose: event.target.value })} placeholder="Workshop, review, transport..." />
+                </div>
               </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>By: {b.bookedBy?.name} {b.purpose ? `· ${b.purpose}` : ''}</div>
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <button type="submit" className="button button-primary">Create booking</button>
+                <button type="button" className="button button-secondary" onClick={() => setShowForm(false)}>Cancel</button>
+              </div>
+            </form>
+          ) : null}
+
+          {loading ? (
+            <LoadingState label="Loading bookings..." />
+          ) : bookings.length === 0 ? (
+            <EmptyState icon={BookMarked} title="No bookings yet" description="Shared resource reservations will appear here once users start scheduling equipment or rooms." />
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Resource</th>
+                    <th>Window</th>
+                    <th>Booked by</th>
+                    <th>Purpose</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bookings.map((booking) => (
+                    <tr key={booking._id}>
+                      <td>
+                        <div style={{ fontWeight: 800 }}>{booking.asset?.name}</div>
+                        <div style={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>{booking.asset?.assetTag}</div>
+                      </td>
+                      <td>
+                        <div>{formatDateTime(booking.startTime)}</div>
+                        <div style={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>to {formatDateTime(booking.endTime)}</div>
+                      </td>
+                      <td>{booking.bookedBy?.name || '--'}</td>
+                      <td style={{ color: 'var(--text-secondary)' }}>{booking.purpose || 'Not specified'}</td>
+                      <td><StatusPill>{booking.status}</StatusPill></td>
+                      <td>
+                        {booking.status === 'Upcoming' ? (
+                          <button className="button button-danger button-sm" onClick={() => handleCancel(booking._id)}>Cancel</button>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>No action</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <span className={`badge ${statusBadge[b.status]}`}>{b.status}</span>
-              {b.status === 'Upcoming' && <button className="btn btn-sm btn-danger" onClick={() => handleCancel(b._id)}>Cancel</button>}
-            </div>
-          </div>
-        ))}
-        {bookings.length === 0 && <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No bookings found</div>}
-      </div>
+          )}
+        </div>
+      </SurfaceCard>
+
+      <style>{`
+        @media (max-width: 1200px) {
+          .kpi-grid > * { grid-column: span 4 !important; }
+        }
+        @media (max-width: 780px) {
+          .kpi-grid > * { grid-column: span 2 !important; }
+        }
+      `}</style>
     </div>
   );
-};
+}
 
 export default BookingsPage;

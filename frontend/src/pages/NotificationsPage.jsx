@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
-import { getNotifications, markNotificationRead, markAllNotificationsRead } from '../api/dataApi';
+import { useEffect, useState } from 'react';
+import { Bell, CheckCheck, MailWarning } from 'lucide-react';
+import { getNotifications, markAllNotificationsRead, markNotificationRead } from '../api/dataApi';
+import { EmptyState, FiltersBar, LoadingState, PageHeader, StatusPill, SurfaceCard, formatDateTime } from '../components/ui';
 
-const NotificationsPage = () => {
+function NotificationsPage() {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
@@ -13,69 +15,97 @@ const NotificationsPage = () => {
       if (filter) params.isRead = filter;
       const res = await getNotifications(params);
       setNotifications(res.data.data.notifications);
-    } catch { /* ignore */ }
-    setLoading(false);
+    } catch {
+      setNotifications([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { load(); }, [filter]);
 
   const handleMarkRead = async (id) => {
-    try { await markNotificationRead(id); load(); } catch { /* ignore */ }
+    try {
+      await markNotificationRead(id);
+      load();
+    } catch {}
   };
 
   const handleMarkAllRead = async () => {
-    try { await markAllNotificationsRead(); load(); } catch { /* ignore */ }
-  };
-
-  const typeIcon = {
-    AssetAssigned: '📦', MaintenanceApproved: '✅', MaintenanceRejected: '❌',
-    BookingConfirmed: '📅', BookingCancelled: '🚫', BookingReminder: '⏰',
-    TransferApproved: '🔄', TransferRejected: '❌', OverdueReturnAlert: '⚠️',
-    AuditDiscrepancy: '📋', RoleChanged: '👤', General: '📢',
+    try {
+      await markAllNotificationsRead();
+      load();
+    } catch {}
   };
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, marginBottom: '0.25rem' }}>Notifications</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem' }}>Stay informed about important events</p>
-        </div>
-        <button className="btn btn-secondary" onClick={handleMarkAllRead}>Mark All Read</button>
-      </div>
+    <div className="page-stack">
+      <PageHeader
+        eyebrow="Awareness layer"
+        title="Notifications and reminders"
+        description="Stay on top of assignments, approvals, maintenance events, audit discrepancies, and overdue return alerts."
+        actions={[
+          <button key="all" className="button button-secondary" onClick={handleMarkAllRead}>
+            <CheckCheck size={18} />
+            <span>Mark all read</span>
+          </button>,
+        ]}
+      />
 
-      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem' }}>
-        <select className="input" style={{ maxWidth: '160px' }} value={filter} onChange={(e) => setFilter(e.target.value)}>
-          <option value="">All</option>
-          <option value="false">Unread</option>
-          <option value="true">Read</option>
-        </select>
-      </div>
+      <SurfaceCard title="Notification stream" description="Review all account-level activity signals in one feed." index={0}>
+        <div className="page-stack">
+          <FiltersBar>
+            <select className="select" style={{ maxWidth: 180 }} value={filter} onChange={(event) => setFilter(event.target.value)}>
+              <option value="">All notifications</option>
+              <option value="false">Unread</option>
+              <option value="true">Read</option>
+            </select>
+          </FiltersBar>
 
-      <div style={{ display: 'grid', gap: '0.5rem' }}>
-        {notifications.map((n) => (
-          <div key={n._id} className="card" style={{
-            padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            opacity: n.isRead ? 0.7 : 1,
-            borderLeft: n.isRead ? '3px solid var(--border-color)' : '3px solid var(--color-primary)',
-          }}>
-            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
-              <span style={{ fontSize: '1.25rem', flexShrink: 0 }}>{typeIcon[n.type] || '📢'}</span>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: '0.9375rem' }}>{n.title}</div>
-                <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginTop: '0.125rem' }}>{n.message}</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>{new Date(n.createdAt).toLocaleString()}</div>
-              </div>
+          {loading ? (
+            <LoadingState label="Loading notifications..." />
+          ) : notifications.length === 0 ? (
+            <EmptyState icon={Bell} title="No notifications right now" description="Asset assignments, maintenance decisions, booking reminders, and audit discrepancies will appear here." />
+          ) : (
+            <div style={{ display: 'grid', gap: '0.85rem' }}>
+              {notifications.map((notification) => (
+                <div
+                  key={notification._id}
+                  style={{
+                    padding: '1rem 1.1rem',
+                    borderRadius: 20,
+                    border: notification.isRead ? '1px solid rgba(148, 163, 184, 0.08)' : '1px solid rgba(96, 165, 250, 0.18)',
+                    background: notification.isRead ? 'rgba(8, 18, 34, 0.45)' : 'linear-gradient(135deg, rgba(37, 99, 235, 0.14), rgba(56, 189, 248, 0.06))',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: '1rem',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <div style={{ display: 'flex', gap: '0.9rem', flex: 1, minWidth: 260 }}>
+                    <div style={{ width: 42, height: 42, borderRadius: 16, display: 'grid', placeItems: 'center', background: 'rgba(56, 189, 248, 0.12)', color: 'var(--brand-secondary)', flexShrink: 0 }}>
+                      <MailWarning size={18} />
+                    </div>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                        <strong>{notification.title}</strong>
+                        <StatusPill>{notification.isRead ? 'Read' : 'Unread'}</StatusPill>
+                      </div>
+                      <div style={{ color: 'var(--text-secondary)', marginTop: '0.35rem' }}>{notification.message}</div>
+                      <div style={{ color: 'var(--text-muted)', marginTop: '0.45rem', fontSize: '0.82rem' }}>{formatDateTime(notification.createdAt)}</div>
+                    </div>
+                  </div>
+                  {!notification.isRead ? (
+                    <button className="button button-secondary button-sm" onClick={() => handleMarkRead(notification._id)}>Mark read</button>
+                  ) : null}
+                </div>
+              ))}
             </div>
-            {!n.isRead && (
-              <button className="btn btn-sm btn-secondary" onClick={() => handleMarkRead(n._id)} style={{ flexShrink: 0 }}>Mark Read</button>
-            )}
-          </div>
-        ))}
-        {notifications.length === 0 && <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No notifications</div>}
-      </div>
+          )}
+        </div>
+      </SurfaceCard>
     </div>
   );
-};
+}
 
 export default NotificationsPage;

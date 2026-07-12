@@ -1,44 +1,76 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { ClipboardCheck, FileSearch, Lock, PlusCircle } from 'lucide-react';
+import {
+  closeAuditCycle,
+  createAuditCycle,
+  createAuditEntry,
+  getAuditCycles,
+  getAuditEntries,
+  getDiscrepancyReport,
+  getUsers,
+  getAssets,
+} from '../api/dataApi';
 import { useAuth } from '../context/AuthContext';
-import { getAuditCycles, createAuditCycle, getAuditEntries, createAuditEntry, closeAuditCycle, getDiscrepancyReport } from '../api/dataApi';
+import {
+  EmptyState,
+  KeyValueList,
+  LoadingState,
+  MetricCard,
+  PageHeader,
+  StatusPill,
+  SurfaceCard,
+  formatDate,
+} from '../components/ui';
 
-const AuditsPage = () => {
-  const { user, hasRole } = useAuth();
+function AuditsPage() {
+  const { hasRole } = useAuth();
   const [cycles, setCycles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ scope: { type: 'Department', value: '' }, auditors: '' });
+  const [form, setForm] = useState({ scope: { type: 'Department', value: '' }, auditors: [] });
   const [error, setError] = useState('');
   const [selectedCycle, setSelectedCycle] = useState(null);
   const [entries, setEntries] = useState([]);
   const [entryForm, setEntryForm] = useState({});
   const [report, setReport] = useState(null);
+  const [usersList, setUsersList] = useState([]);
+  const [scopedAssets, setScopedAssets] = useState([]);
+
+  useEffect(() => {
+    if (showForm) {
+      getUsers({ limit: 100 })
+        .then((res) => setUsersList(res.data.data.users || []))
+        .catch(() => setUsersList([]));
+    }
+  }, [showForm]);
 
   const load = async () => {
     setLoading(true);
     try {
       const res = await getAuditCycles({ limit: 50 });
       setCycles(res.data.data.cycles);
-    } catch { /* ignore */ }
-    setLoading(false);
+    } catch {
+      setCycles([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { load(); }, []);
 
-  const handleCreate = async (e) => {
-    e.preventDefault();
+  const handleCreate = async (event) => {
+    event.preventDefault();
     setError('');
     try {
-      const data = {
+      await createAuditCycle({
         ...form,
-        auditors: form.auditors.split(',').map((s) => s.trim()).filter(Boolean),
-      };
-      await createAuditCycle(data);
+        auditors: form.auditors || [],
+      });
       setShowForm(false);
-      setForm({ scope: { type: 'Department', value: '' }, auditors: '' });
+      setForm({ scope: { type: 'Department', value: '' }, auditors: [] });
       load();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed');
+      setError(err.response?.data?.message || 'Failed to create audit cycle');
     }
   };
 
@@ -48,128 +80,291 @@ const AuditsPage = () => {
     try {
       const res = await getAuditEntries(cycle._id);
       setEntries(res.data.data.entries);
-    } catch { setEntries([]); }
+      getAssets({ limit: 200 })
+        .then((assetRes) => {
+          const list = assetRes.data.data.assets || [];
+          const filtered = list.filter((a) => {
+            if (cycle.scope?.type === 'Department') {
+              return a.department?.name === cycle.scope.value || a.department?._id === cycle.scope.value;
+            } else if (cycle.scope?.type === 'Location') {
+              return a.location?.toLowerCase().includes(cycle.scope.value.toLowerCase());
+            }
+            return true;
+          });
+          setScopedAssets(filtered.length > 0 ? filtered : list);
+        })
+        .catch(() => setScopedAssets([]));
+    } catch {
+      setEntries([]);
+      setScopedAssets([]);
+    }
   };
 
-  const handleEntry = async (e) => {
-    e.preventDefault();
+  const handleEntry = async (event) => {
+    event.preventDefault();
     try {
       await createAuditEntry(selectedCycle._id, entryForm);
       setEntryForm({});
       handleViewCycle(selectedCycle);
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed');
+      setError(err.response?.data?.message || 'Failed to submit audit entry');
     }
   };
 
   const handleClose = async (id) => {
     if (!confirm('Close this audit cycle? This will lock all entries.')) return;
-    try { await closeAuditCycle(id); load(); setSelectedCycle(null); } catch (err) { alert(err.response?.data?.message || 'Failed'); }
+    try {
+      await closeAuditCycle(id);
+      load();
+      setSelectedCycle(null);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to close cycle');
+    }
   };
 
   const handleReport = async (id) => {
     try {
       const res = await getDiscrepancyReport(id);
       setReport(res.data.data.report);
-    } catch (err) { alert(err.response?.data?.message || 'Failed'); }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to load discrepancy report');
+    }
   };
 
-  const statusBadge = { Open: 'badge-info', InProgress: 'badge-warning', Closed: 'badge-neutral' };
-  const resultBadge = { Verified: 'badge-success', Missing: 'badge-danger', Damaged: 'badge-warning' };
+  const stats = useMemo(() => ({
+    open: cycles.filter((cycle) => cycle.status === 'Open').length,
+    inProgress: cycles.filter((cycle) => cycle.status === 'InProgress').length,
+    closed: cycles.filter((cycle) => cycle.status === 'Closed').length,
+  }), [cycles]);
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, marginBottom: '0.25rem' }}>Asset Audits</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem' }}>Run structured audit cycles</p>
-        </div>
-        {hasRole('Admin') && <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>+ Create Audit Cycle</button>}
-      </div>
+    <div className="page-stack">
+      <PageHeader
+        eyebrow="Verification workflows"
+        title="Structured audit cycles"
+        description="Launch scoped audits, collect verification entries, and close cycles with discrepancy visibility and traceable evidence."
+        actions={
+          hasRole('Admin') ? [
+            <button key="new" className="button button-primary" onClick={() => setShowForm((value) => !value)}>
+              <PlusCircle size={18} />
+              <span>{showForm ? 'Close audit form' : 'Create audit cycle'}</span>
+            </button>,
+          ] : null
+        }
+      />
 
-      {error && <div style={{ padding: '0.75rem', background: 'rgba(239,68,68,0.1)', borderRadius: '0.5rem', color: '#f87171', fontSize: '0.8125rem', marginBottom: '1rem' }}>{error}</div>}
+      <section className="kpi-grid">
+        <MetricCard title="Open cycles" value={stats.open} icon={ClipboardCheck} tone="var(--brand-primary)" index={0} footer="Not yet actively underway" />
+        <MetricCard title="In progress" value={stats.inProgress} icon={FileSearch} tone="var(--warning)" index={1} footer="Currently collecting entries" />
+        <MetricCard title="Closed cycles" value={stats.closed} icon={Lock} tone="var(--success)" index={2} footer="Locked with verified outcomes" />
+      </section>
 
-      {showForm && (
-        <form onSubmit={handleCreate} className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h3 style={{ marginBottom: '1rem', fontWeight: 600 }}>New Audit Cycle</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1rem' }}>
-            <div><label className="label">Name *</label><input className="input" value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></div>
-            <div><label className="label">Scope Type *</label>
-              <select className="input" value={form.scope.type} onChange={(e) => setForm({ ...form, scope: { ...form.scope, type: e.target.value } })}>
-                <option value="Department">Department</option><option value="Location">Location</option>
-              </select>
-            </div>
-            <div><label className="label">Scope Value *</label><input className="input" placeholder="Dept name or location" value={form.scope.value} onChange={(e) => setForm({ ...form, scope: { ...form.scope, value: e.target.value } })} required /></div>
-            <div><label className="label">Start Date *</label><input className="input" type="date" value={form.startDate || ''} onChange={(e) => setForm({ ...form, startDate: e.target.value })} required /></div>
-            <div><label className="label">End Date *</label><input className="input" type="date" value={form.endDate || ''} onChange={(e) => setForm({ ...form, endDate: e.target.value })} required /></div>
-            <div><label className="label">Auditor IDs * (comma-separated)</label><input className="input" placeholder="id1, id2" value={form.auditors} onChange={(e) => setForm({ ...form, auditors: e.target.value })} required /></div>
-          </div>
-          <div style={{ marginTop: '1rem', display: 'flex', gap: '0.75rem' }}>
-            <button type="submit" className="btn btn-primary">Create</button>
-            <button type="button" className="btn btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
-          </div>
-        </form>
-      )}
+      <SurfaceCard title="Audit command board" description="Manage audit schedules, entries, and discrepancy visibility." index={0}>
+        <div className="page-stack">
+          {error ? <div className="alert">{error}</div> : null}
 
-      {selectedCycle && (
-        <div className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h3 style={{ fontWeight: 600 }}>{selectedCycle.name} <span className={`badge ${statusBadge[selectedCycle.status]}`} style={{ marginLeft: '0.5rem' }}>{selectedCycle.status}</span></h3>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              {hasRole('Admin', 'AssetManager') && <button className="btn btn-sm btn-secondary" onClick={() => handleReport(selectedCycle._id)}>View Report</button>}
-              {selectedCycle.status !== 'Closed' && hasRole('Admin') && <button className="btn btn-sm btn-danger" onClick={() => handleClose(selectedCycle._id)}>Close Cycle</button>}
-              <button className="btn btn-sm btn-secondary" onClick={() => setSelectedCycle(null)}>✕</button>
-            </div>
-          </div>
-
-          {selectedCycle.status !== 'Closed' && (
-            <form onSubmit={handleEntry} style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-              <div><label className="label">Asset ID</label><input className="input" value={entryForm.asset || ''} onChange={(e) => setEntryForm({ ...entryForm, asset: e.target.value })} required /></div>
-              <div><label className="label">Result</label>
-                <select className="input" value={entryForm.result || ''} onChange={(e) => setEntryForm({ ...entryForm, result: e.target.value })} required>
-                  <option value="">Select...</option><option value="Verified">Verified</option><option value="Missing">Missing</option><option value="Damaged">Damaged</option>
-                </select>
+          {showForm ? (
+            <form onSubmit={handleCreate} style={{ display: 'grid', gap: '1rem', padding: '1.2rem', borderRadius: 22, background: 'rgba(8, 18, 34, 0.54)', border: '1px solid rgba(148, 163, 184, 0.08)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+                <div className="field">
+                  <label>Cycle name</label>
+                  <input className="input" value={form.name || ''} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
+                </div>
+                <div className="field">
+                  <label>Scope type</label>
+                  <select className="select" value={form.scope.type} onChange={(event) => setForm({ ...form, scope: { ...form.scope, type: event.target.value } })}>
+                    <option value="Department">Department</option>
+                    <option value="Location">Location</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Scope value</label>
+                  <input className="input" value={form.scope.value} onChange={(event) => setForm({ ...form, scope: { ...form.scope, value: event.target.value } })} required />
+                </div>
+                <div className="field">
+                  <label>Start date</label>
+                  <input className="input" type="date" value={form.startDate || ''} onChange={(event) => setForm({ ...form, startDate: event.target.value })} required />
+                </div>
+                <div className="field">
+                  <label>End date</label>
+                  <input className="input" type="date" value={form.endDate || ''} onChange={(event) => setForm({ ...form, endDate: event.target.value })} required />
+                </div>
+                <div className="field" style={{ gridColumn: 'span 2' }}>
+                  <label>Assigned Auditors</label>
+                  <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', maxHeight: 120, overflowY: 'auto', padding: '0.6rem', borderRadius: 16, background: 'rgba(148, 163, 184, 0.06)', border: '1px solid rgba(148, 163, 184, 0.08)' }}>
+                    {usersList.map((u) => {
+                      const isChecked = (form.auditors || []).includes(u._id);
+                      return (
+                        <label key={u._id} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', padding: '0.2rem 0.5rem', background: 'rgba(148, 163, 184, 0.06)', borderRadius: 8 }}>
+                          <input 
+                            type="checkbox" 
+                            checked={isChecked} 
+                            onChange={(e) => {
+                              const current = form.auditors || [];
+                              const updated = e.target.checked 
+                                ? [...current, u._id] 
+                                : current.filter((id) => id !== u._id);
+                              setForm({ ...form, auditors: updated });
+                            }} 
+                          />
+                          <span style={{ fontSize: '0.85rem' }}>{u.name}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
-              <div><label className="label">Notes</label><input className="input" value={entryForm.notes || ''} onChange={(e) => setEntryForm({ ...entryForm, notes: e.target.value })} /></div>
-              <button type="submit" className="btn btn-primary btn-sm">Submit Entry</button>
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <button type="submit" className="button button-primary">Create cycle</button>
+                <button type="button" className="button button-secondary" onClick={() => setShowForm(false)}>Cancel</button>
+              </div>
             </form>
-          )}
+          ) : null}
 
-          <div style={{ fontSize: '0.875rem' }}>
-            <h4 style={{ fontWeight: 600, marginBottom: '0.5rem' }}>Entries ({entries.length})</h4>
-            {entries.map((en) => (
-              <div key={en._id} style={{ padding: '0.5rem 0', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between' }}>
-                <span>{en.asset?.name} ({en.asset?.assetTag}) — by {en.auditor?.name}</span>
-                <span className={`badge ${resultBadge[en.result]}`}>{en.result}</span>
+          {selectedCycle ? (
+            <div style={{ padding: '1.2rem', borderRadius: 22, background: 'rgba(8, 18, 34, 0.54)', border: '1px solid rgba(148, 163, 184, 0.08)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '1rem' }}>
+                <div>
+                  <h3 style={{ margin: 0 }}>{selectedCycle.name}</h3>
+                  <div style={{ color: 'var(--text-secondary)', marginTop: '0.35rem' }}>
+                    {selectedCycle.scope?.type}: {selectedCycle.scope?.value}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <StatusPill>{selectedCycle.status}</StatusPill>
+                  {hasRole('Admin', 'AssetManager') ? <button className="button button-secondary button-sm" onClick={() => handleReport(selectedCycle._id)}>View report</button> : null}
+                  {selectedCycle.status !== 'Closed' && hasRole('Admin') ? <button className="button button-danger button-sm" onClick={() => handleClose(selectedCycle._id)}>Close cycle</button> : null}
+                  <button className="button button-secondary button-sm" onClick={() => setSelectedCycle(null)}>Dismiss</button>
+                </div>
               </div>
-            ))}
-          </div>
 
-          {report && (
-            <div style={{ marginTop: '1rem', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '0.5rem' }}>
-              <h4 style={{ fontWeight: 600, marginBottom: '0.5rem' }}>Discrepancy Report</h4>
-              <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-                Total: {report.totalDiscrepancies} · Missing: {report.missing} · Damaged: {report.damaged}
+              <KeyValueList
+                items={[
+                  { label: 'Start', value: formatDate(selectedCycle.startDate) },
+                  { label: 'End', value: formatDate(selectedCycle.endDate) },
+                  { label: 'Auditors', value: selectedCycle.auditors?.length || 0 },
+                  { label: 'Entries logged', value: entries.length },
+                ]}
+              />
+
+              {selectedCycle.status !== 'Closed' ? (
+                <form onSubmit={handleEntry} style={{ display: 'grid', gap: '1rem', marginTop: '1rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+                    <div className="field">
+                      <label>Asset</label>
+                      <select className="select" value={entryForm.asset || ''} onChange={(event) => setEntryForm({ ...entryForm, asset: event.target.value })} required>
+                        <option value="">Select scoped asset...</option>
+                        {scopedAssets.map((asset) => (
+                          <option key={asset._id} value={asset._id}>
+                            {asset.name} ({asset.assetTag})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label>Result</label>
+                      <select className="select" value={entryForm.result || ''} onChange={(event) => setEntryForm({ ...entryForm, result: event.target.value })} required>
+                        <option value="">Select result</option>
+                        <option value="Verified">Verified</option>
+                        <option value="Missing">Missing</option>
+                        <option value="Damaged">Damaged</option>
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label>Notes</label>
+                      <input className="input" value={entryForm.notes || ''} onChange={(event) => setEntryForm({ ...entryForm, notes: event.target.value })} />
+                    </div>
+                  </div>
+                  <div>
+                    <button type="submit" className="button button-primary">Submit entry</button>
+                  </div>
+                </form>
+              ) : null}
+
+              <div style={{ marginTop: '1rem' }}>
+                <div style={{ fontWeight: 800, marginBottom: '0.65rem' }}>Cycle entries</div>
+                {entries.length === 0 ? (
+                  <EmptyState icon={ClipboardCheck} title="No entries yet" description="Audit entries submitted by assigned auditors will accumulate here." />
+                ) : (
+                  <div className="table-wrap">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Asset</th>
+                          <th>Auditor</th>
+                          <th>Result</th>
+                          <th>Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {entries.map((entry) => (
+                          <tr key={entry._id}>
+                            <td>{entry.asset?.name} ({entry.asset?.assetTag})</td>
+                            <td>{entry.auditor?.name || '--'}</td>
+                            <td><StatusPill>{entry.result}</StatusPill></td>
+                            <td>{entry.notes || 'No notes'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
+
+              {report ? (
+                <div style={{ marginTop: '1rem', padding: '1rem', borderRadius: 18, background: 'rgba(248, 113, 113, 0.08)', border: '1px solid rgba(248, 113, 113, 0.16)' }}>
+                  <div style={{ fontWeight: 800, marginBottom: '0.4rem' }}>Discrepancy report</div>
+                  <div style={{ color: 'var(--text-secondary)' }}>
+                    Total discrepancies: {report.totalDiscrepancies} • Missing: {report.missing} • Damaged: {report.damaged}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {loading ? (
+            <LoadingState label="Loading audit cycles..." />
+          ) : cycles.length === 0 ? (
+            <EmptyState icon={ClipboardCheck} title="No audit cycles created" description="Create a cycle to assign auditors, verify assets, and generate discrepancy reports." />
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Cycle</th>
+                    <th>Scope</th>
+                    <th>Dates</th>
+                    <th>Auditors</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cycles.map((cycle) => (
+                    <tr key={cycle._id} className="table-row-clickable" onClick={() => handleViewCycle(cycle)}>
+                      <td style={{ fontWeight: 800 }}>{cycle.name}</td>
+                      <td>{cycle.scope?.type} • {cycle.scope?.value}</td>
+                      <td>{formatDate(cycle.startDate)} to {formatDate(cycle.endDate)}</td>
+                      <td>{cycle.auditors?.length || 0}</td>
+                      <td><StatusPill>{cycle.status}</StatusPill></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
-      )}
+      </SurfaceCard>
 
-      <div style={{ display: 'grid', gap: '0.75rem' }}>
-        {cycles.map((c) => (
-          <div key={c._id} className="card" style={{ padding: '1rem', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} onClick={() => handleViewCycle(c)}>
-            <div>
-              <div style={{ fontWeight: 600 }}>{c.name}</div>
-              <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>Scope: {c.scope?.type} — {c.scope?.value} · {c.auditors?.length || 0} auditor(s)</div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{new Date(c.startDate).toLocaleDateString()} → {new Date(c.endDate).toLocaleDateString()}</div>
-            </div>
-            <span className={`badge ${statusBadge[c.status]}`}>{c.status}</span>
-          </div>
-        ))}
-      </div>
+      <style>{`
+        @media (max-width: 1200px) {
+          .kpi-grid > * { grid-column: span 4 !important; }
+        }
+        @media (max-width: 780px) {
+          .kpi-grid > * { grid-column: span 2 !important; }
+        }
+      `}</style>
     </div>
   );
-};
+}
 
 export default AuditsPage;

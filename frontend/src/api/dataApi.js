@@ -15,6 +15,7 @@ export const getCategories = (params) => api.get('/asset-categories', { params }
 export const createCategory = (data) => api.post('/asset-categories', data);
 export const updateCategory = (id, data) => api.patch(`/asset-categories/${id}`, data);
 export const getUsers = (params) => api.get('/users', { params });
+export const createUser = (data) => api.post('/users', data);
 export const getUserById = (id) => api.get(`/users/${id}`);
 export const updateUser = (id, data) => api.patch(`/users/${id}`, data);
 export const getAllocations = (params) => api.get('/allocations', { params });
