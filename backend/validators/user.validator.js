@@ -11,10 +11,10 @@ const updateUser = Joi.object({
   department: objectId.allow(null).optional(),
   status: Joi.string().valid('Active', 'Inactive').optional(),
   role: Joi.string()
-    .valid(ROLES.EMPLOYEE, ROLES.DEPARTMENT_HEAD, ROLES.ASSET_MANAGER)
+    .valid(ROLES.EMPLOYEE, ROLES.ASSET_MANAGER)
     .optional()
     .messages({
-      'any.only': 'Role must be Employee, DepartmentHead, or AssetManager',
+      'any.only': 'Role must be Employee or AssetManager',
     }),
 });
 

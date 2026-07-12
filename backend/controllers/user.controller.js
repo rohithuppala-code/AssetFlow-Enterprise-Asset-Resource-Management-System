@@ -29,4 +29,9 @@ const update = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, 'User updated', { user }));
 });
 
-module.exports = { getAll, getById, update };
+const create = asyncHandler(async (req, res) => {
+  const user = await userService.createUser(req.body, req.user);
+  res.status(201).json(new ApiResponse(201, 'User created successfully', { user }));
+});
+
+module.exports = { getAll, getById, update, create };

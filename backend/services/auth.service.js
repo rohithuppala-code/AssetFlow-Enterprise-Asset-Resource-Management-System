@@ -29,15 +29,15 @@ const buildTokenPayload = (user) => ({
  * Register a new user.
  * Signup ALWAYS creates an Employee — no role selection.
  */
-const register = async ({ name, email, password }) => {
+const register = async ({ name, email, password, role }) => {
   // Check if email already exists
   const existingUser = await User.findOne({ email });
   if (existingUser) {
     throw new ApiError(409, 'Email already registered');
   }
 
-  // Create user (role defaults to Employee)
-  const user = await User.create({ name, email, password });
+  // Create user (role defaults to Employee if not specified)
+  const user = await User.create({ name, email, password, role: role || ROLES.EMPLOYEE });
 
   // Generate tokens
   const accessToken = generateAccessToken(buildTokenPayload(user));

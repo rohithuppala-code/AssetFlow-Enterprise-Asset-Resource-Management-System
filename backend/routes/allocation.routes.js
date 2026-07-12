@@ -23,10 +23,10 @@ router.get('/', allocationController.getAll);
 // GET /api/v1/allocations/:id — any authenticated
 router.get('/:id', allocationController.getById);
 
-// POST /api/v1/allocations — Admin, AssetManager, DepartmentHead
+// POST /api/v1/allocations — Admin, AssetManager
 router.post(
   '/',
-  authorize(ROLES.ADMIN, ROLES.ASSET_MANAGER, ROLES.DEPARTMENT_HEAD),
+  authorize(ROLES.ADMIN, ROLES.ASSET_MANAGER),
   validate(allocationValidator.createAllocation),
   allocationController.create
 );

@@ -21,9 +21,6 @@ const getDashboardStats = async (user) => {
   // Scope by role
   if (user.role === 'Employee') {
     baseAllocationFilter.allocatedTo = user._id;
-  } else if (user.role === 'DepartmentHead' && user.department) {
-    baseAssetFilter.department = user.department;
-    baseAllocationFilter.department = user.department;
   }
 
   const [
@@ -60,6 +57,29 @@ const getDashboardStats = async (user) => {
     }),
   ]);
 
+  const trendData = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const start = new Date(d.setHours(0, 0, 0, 0));
+    const end = new Date(d.setHours(23, 59, 59, 999));
+
+    const allocationsCount = await Allocation.countDocuments({
+      ...baseAllocationFilter,
+      createdAt: { $gte: start, $lte: end },
+    });
+    const bookingsCount = await Booking.countDocuments({
+      createdAt: { $gte: start, $lte: end },
+    });
+
+    const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
+    trendData.push({
+      name: dayName,
+      allocations: allocationsCount,
+      bookings: bookingsCount,
+    });
+  }
+
   return {
     assetsAvailable,
     assetsAllocated,
@@ -68,6 +88,7 @@ const getDashboardStats = async (user) => {
     pendingTransfers,
     upcomingReturns,
     overdueReturns,
+    trendData,
   };
 };
 

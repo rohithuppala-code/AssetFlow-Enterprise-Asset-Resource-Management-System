@@ -9,14 +9,12 @@ const createDepartment = Joi.object({
     'any.required': 'Department name is required',
   }),
   description: Joi.string().trim().allow('').optional(),
-  head: objectId.allow(null).optional(),
   parentDepartment: objectId.allow(null).optional(),
 });
 
 const updateDepartment = Joi.object({
   name: Joi.string().trim().min(2).max(100).optional(),
   description: Joi.string().trim().allow('').optional(),
-  head: objectId.allow(null).optional(),
   parentDepartment: objectId.allow(null).optional(),
   status: Joi.string().valid('Active', 'Inactive').optional(),
 });

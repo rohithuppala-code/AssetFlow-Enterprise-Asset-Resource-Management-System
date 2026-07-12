@@ -16,11 +16,6 @@ const departmentSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
-    head: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      default: null,
-    },
     parentDepartment: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Department',

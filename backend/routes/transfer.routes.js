@@ -10,10 +10,10 @@ const { ROLES } = require('../config/constants');
 
 router.use(auth);
 
-// GET /api/v1/transfers — Admin, AssetManager, DepartmentHead
+// GET /api/v1/transfers — Admin, AssetManager
 router.get(
   '/',
-  authorize(ROLES.ADMIN, ROLES.ASSET_MANAGER, ROLES.DEPARTMENT_HEAD),
+  authorize(ROLES.ADMIN, ROLES.ASSET_MANAGER),
   transferController.getAll
 );
 
@@ -27,17 +27,17 @@ router.post(
   transferController.create
 );
 
-// PATCH /api/v1/transfers/:id/approve — Admin, AssetManager, DepartmentHead
+// PATCH /api/v1/transfers/:id/approve — Admin, AssetManager
 router.patch(
   '/:id/approve',
-  authorize(ROLES.ADMIN, ROLES.ASSET_MANAGER, ROLES.DEPARTMENT_HEAD),
+  authorize(ROLES.ADMIN, ROLES.ASSET_MANAGER),
   transferController.approve
 );
 
-// PATCH /api/v1/transfers/:id/reject — Admin, AssetManager, DepartmentHead
+// PATCH /api/v1/transfers/:id/reject — Admin, AssetManager
 router.patch(
   '/:id/reject',
-  authorize(ROLES.ADMIN, ROLES.ASSET_MANAGER, ROLES.DEPARTMENT_HEAD),
+  authorize(ROLES.ADMIN, ROLES.ASSET_MANAGER),
   validate(transferValidator.rejectTransfer),
   transferController.reject
 );

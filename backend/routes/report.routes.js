@@ -25,7 +25,7 @@ router.get(
 // GET /api/v1/reports/department-allocation
 router.get(
   '/department-allocation',
-  authorize(ROLES.ADMIN, ROLES.ASSET_MANAGER, ROLES.DEPARTMENT_HEAD),
+  authorize(ROLES.ADMIN, ROLES.ASSET_MANAGER),
   reportController.getDepartmentAllocation
 );
 

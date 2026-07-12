@@ -89,6 +89,30 @@ const updateUser = async (id, data, adminUser) => {
       metadata: { oldRole, newRole: data.role },
     });
   }
+  return user;
+};
+
+const createUser = async (data, adminUser) => {
+  const existingUser = await User.findOne({ email: data.email });
+  if (existingUser) {
+    throw new ApiError(409, 'Email already registered');
+  }
+
+  const user = await User.create({
+    name: data.name,
+    email: data.email,
+    password: data.password,
+    role: data.role || ROLES.EMPLOYEE,
+  });
+
+  await activityLogService.log({
+    user: adminUser._id,
+    action: ACTIONS.USER_CREATED || 'USER_CREATED',
+    entityType: 'User',
+    entityId: user._id,
+    description: `Created new user account: ${user.name} (${user.role})`,
+    ipAddress: '',
+  });
 
   return user;
 };
@@ -97,4 +121,5 @@ module.exports = {
   getUsers,
   getUserById,
   updateUser,
+  createUser,
 };

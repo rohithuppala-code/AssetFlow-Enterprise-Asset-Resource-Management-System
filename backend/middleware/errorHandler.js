@@ -9,9 +9,7 @@ const env = require('../config/env');
  */
 // eslint-disable-next-line no-unused-vars
 const errorHandler = (err, req, res, next) => {
-  let error = { ...err };
-  error.message = err.message;
-  error.stack = err.stack;
+  let error = err;
 
   // ── Mongoose: bad ObjectId ──
   if (err.name === 'CastError') {
@@ -20,13 +18,20 @@ const errorHandler = (err, req, res, next) => {
 
   // ── Mongoose: duplicate key ──
   if (err.code === 11000) {
-    const field = Object.keys(err.keyValue).join(', ');
+    const field = Object.keys(err.keyValue || {}).join(', ');
     error = new ApiError(409, `Duplicate value for field: ${field}`);
   }
 
-  // ── Mongoose: validation error ──
+  // ── Mongoose or Joi: validation error ──
   if (err.name === 'ValidationError') {
-    const messages = Object.values(err.errors).map((val) => val.message);
+    let messages = [];
+    if (err.errors) {
+      // Mongoose validation error
+      messages = Object.values(err.errors).map((val) => val.message);
+    } else if (err.details) {
+      // Joi validation error
+      messages = err.details.map((detail) => detail.message);
+    }
     error = new ApiError(400, 'Validation failed', messages);
   }
 

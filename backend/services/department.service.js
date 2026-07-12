@@ -8,16 +8,6 @@ const { ROLES, DEPARTMENT_STATUS } = require('../config/constants');
  * Create a new department.
  */
 const createDepartment = async (data) => {
-  // Validate head is a DepartmentHead or Admin
-  if (data.head) {
-    const headUser = await User.findById(data.head);
-    if (!headUser) {
-      throw new ApiError(404, 'Head user not found');
-    }
-    if (![ROLES.DEPARTMENT_HEAD, ROLES.ADMIN].includes(headUser.role)) {
-      throw new ApiError(400, 'Department head must have DepartmentHead or Admin role');
-    }
-  }
 
   // Validate parent department exists
   if (data.parentDepartment) {
@@ -43,7 +33,6 @@ const getDepartments = async (query) => {
   const { page, limit, skip, pagination } = buildPagination(query, totalDocs);
 
   const departments = await Department.find(filter)
-    .populate('head', 'name email role')
     .populate('parentDepartment', 'name')
     .sort({ createdAt: -1 })
     .skip(skip)
@@ -57,7 +46,6 @@ const getDepartments = async (query) => {
  */
 const getDepartmentById = async (id) => {
   const department = await Department.findById(id)
-    .populate('head', 'name email role')
     .populate('parentDepartment', 'name');
 
   if (!department) {
@@ -74,17 +62,6 @@ const updateDepartment = async (id, data) => {
   const department = await Department.findById(id);
   if (!department) {
     throw new ApiError(404, 'Department not found');
-  }
-
-  // Validate head if being changed
-  if (data.head) {
-    const headUser = await User.findById(data.head);
-    if (!headUser) {
-      throw new ApiError(404, 'Head user not found');
-    }
-    if (![ROLES.DEPARTMENT_HEAD, ROLES.ADMIN].includes(headUser.role)) {
-      throw new ApiError(400, 'Department head must have DepartmentHead or Admin role');
-    }
   }
 
   // Validate parent department if being changed

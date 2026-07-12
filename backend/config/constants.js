@@ -7,7 +7,6 @@
 const ROLES = {
   ADMIN: 'Admin',
   ASSET_MANAGER: 'AssetManager',
-  DEPARTMENT_HEAD: 'DepartmentHead',
   EMPLOYEE: 'Employee',
 };
 
