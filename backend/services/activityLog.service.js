@@ -1,4 +1,5 @@
 const ActivityLog = require('../models/ActivityLog');
+const { buildPagination } = require('../utils/pagination');
 
 /**
  * Create an activity log entry.
@@ -29,6 +30,48 @@ const log = async ({ user, action, entityType, entityId, description, metadata, 
   }
 };
 
+/**
+ * Get activity logs with pagination and filtering.
+ */
+const getLogs = async (query) => {
+  const filter = {};
+
+  if (query.user) filter.user = query.user;
+  if (query.action) filter.action = query.action;
+  if (query.entityType) filter.entityType = query.entityType;
+  if (query.entityId) filter.entityId = query.entityId;
+
+  if (query.startDate || query.endDate) {
+    filter.createdAt = {};
+    if (query.startDate) filter.createdAt.$gte = new Date(query.startDate);
+    if (query.endDate) filter.createdAt.$lte = new Date(query.endDate);
+  }
+
+  const totalDocs = await ActivityLog.countDocuments(filter);
+  const { page, limit, skip, pagination } = buildPagination(query, totalDocs);
+
+  const logs = await ActivityLog.find(filter)
+    .populate('user', 'name email role')
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit);
+
+  return { logs, pagination };
+};
+
+/**
+ * Get logs for a specific entity.
+ */
+const getEntityLogs = async (entityType, entityId) => {
+  const logs = await ActivityLog.find({ entityType, entityId })
+    .populate('user', 'name email role')
+    .sort({ createdAt: -1 });
+
+  return logs;
+};
+
 module.exports = {
   log,
+  getLogs,
+  getEntityLogs,
 };
